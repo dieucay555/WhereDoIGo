@@ -12,13 +12,11 @@ import org.apache.http.client.ResponseHandler;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.BasicResponseHandler;
 import org.apache.http.impl.client.DefaultHttpClient;
-
 import org.gmarz.googleplaces.models.DetailsResult;
 import org.gmarz.googleplaces.models.PlacesResult;
 import org.gmarz.googleplaces.query.DetailsQuery;
 import org.gmarz.googleplaces.query.NearbySearchQuery;
 import org.gmarz.googleplaces.query.Query;
-import org.gmarz.googleplaces.query.SearchQuery;
 import org.gmarz.googleplaces.query.TextSearchQuery;
 import org.json.JSONException;
 import org.json.JSONObject;

@@ -1,6 +1,7 @@
 package com.archerabi.wheredoigo;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 
 import org.apache.http.client.ClientProtocolException;
@@ -10,65 +11,139 @@ import org.gmarz.googleplaces.models.PlacesResult;
 import org.json.JSONException;
 
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.ActivityInfo;
-import android.hardware.Sensor;
-import android.hardware.SensorEvent;
-import android.hardware.SensorEventListener;
-import android.hardware.SensorManager;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
 import android.os.Bundle;
 import android.support.v4.app.FragmentActivity;
 import android.util.Log;
+import android.view.KeyEvent;
 import android.view.Menu;
+import android.view.View;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputMethodManager;
+import android.webkit.WebView;
+import android.widget.AdapterView;
+import android.widget.AdapterView.OnItemClickListener;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.ListView;
+import android.widget.TextView;
+import android.widget.TextView.OnEditorActionListener;
 
-import com.google.android.gms.maps.CameraUpdate;
-import com.google.android.gms.maps.CameraUpdateFactory;
-import com.google.android.gms.maps.GoogleMap;
-import com.google.android.gms.maps.SupportMapFragment;
-import com.google.android.gms.maps.model.BitmapDescriptorFactory;
-import com.google.android.gms.maps.model.CameraPosition;
-import com.google.android.gms.maps.model.CameraPositionCreator;
-import com.google.android.gms.maps.model.LatLng;
-import com.google.android.gms.maps.model.MarkerOptions;
+import com.archerabi.wheredoigo.model.DataModel;
 
-public class MainActivity extends FragmentActivity implements SensorEventListener, LocationListener {
-
-	private SensorManager mSensorManager;
-	private Sensor mMagneticSensor;
-	private Sensor mAccelSensor;
+public class MainActivity extends FragmentActivity implements LocationListener {
 
 	private LocationManager mLocationManager;
 
-	private float[] latestAccelValues = null;
-	private float[] latestMagValues = null;
-
-	private long lastTimeStamp;
-
 	private GooglePlaces gPlaces;
 
-	private DirectionPointerCanvas directionCanvas;
+	private DataModel places;
+
+	private final int LOCATION_ACCURACY_IN_METERS = 50;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
-		setContentView(R.layout.activity_main);
+		setContentView(R.layout.activity_list);
 
-		// LinearLayout layout = (LinearLayout) findViewById(R.id.root_layout);
-		// directionCanvas = new
-		// DirectionPointerCanvas(getApplicationContext());
-		// layout.addView(directionCanvas);
-
-		mSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
-		mMagneticSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
-		mAccelSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
 		mLocationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
-		mLocationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 10000, 10, this);
-
+		places = new DataModel(getApplicationContext(), android.R.layout.simple_list_item_1);
 		setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
 
+		ListView listView = (ListView) findViewById(R.id.list_view);
+		listView.setOnItemClickListener(new OnItemClickListener() {
+
+			@Override
+			public void onItemClick(AdapterView<?> arg0, View arg1, int position, long arg3) {
+				Place place = places.getItem(position);
+				Intent intent = new Intent(getApplicationContext(), DirectionPointerActivity.class);
+				intent.putExtra("LATITUDE", place.getLatitude());
+				intent.putExtra("LONGITUDE", place.getLongitude());
+				intent.putExtra("DESTINATION",((Place) arg0.getItemAtPosition(position)).getName());
+				startActivity(intent);
+			}
+		});
+		((WebView)findViewById(R.id.webview)).loadUrl("file:///android_asset/busy.gif");
+		((WebView)findViewById(R.id.webview)).setVisibility(View.INVISIBLE);
 		
+		final EditText searchBox = (EditText) findViewById(R.id.search_box);
+		searchBox.setOnEditorActionListener(new OnEditorActionListener() {
+
+			@Override
+			public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
+				if (actionId == EditorInfo.IME_ACTION_SEARCH) {
+					((WebView)findViewById(R.id.webview)).setVisibility(View.VISIBLE);
+					final String query = searchBox.getText().toString();
+					InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+					imm.hideSoftInputFromWindow(searchBox.getWindowToken(), 0);
+					places.clear();
+					new Thread(new Runnable() {
+
+						@Override
+						public void run() {
+							search(query);
+							final Button mapButton = ((Button) findViewById(R.id.map_button));
+							mapButton.post(new Runnable() {
+
+								@Override
+								public void run() {
+									if (places.getCount() > 0) {
+										mapButton.setEnabled(true);
+									} else {
+										mapButton.setEnabled(false);
+									}
+								}
+							});
+						}
+					}).start();
+					return true;
+				}
+				return false;
+			}
+		});
+	}
+
+	private void search(String query) {
+		gPlaces = new GooglePlaces("AIzaSyC1kNWXkXU4N68Cd05eUlGomKamHZ4he6A");
+		try {
+			final PlacesResult result = gPlaces.getPlaces(query, 200, 40.288414, -74.548978);
+			List<String> sPlaces = new ArrayList<String>();
+			for (Place p : result.getPlaces()) {
+				sPlaces.add(p.getName());
+			}
+			runOnUiThread(new Runnable() {
+
+				@Override
+				public void run() {
+					places.addAll(result.getPlaces());
+					ListView listView = (ListView) findViewById(R.id.list_view);
+					// for (Place place : places) {
+					// Log.d(getClass().getName(), place.getName());
+					// LatLng latLng = new LatLng(place.getLatitude(),
+					// place.getLongitude());
+					// GoogleMap mMap = ((SupportMapFragment)
+					// getSupportFragmentManager().findFragmentById(R.id.map)).getMap();
+					// CameraPosition position =
+					// CameraPosition.fromLatLngZoom(latLng, 15);
+					// mMap.animateCamera(CameraUpdateFactory.newCameraPosition(position));
+					// mMap.addMarker(new
+					// MarkerOptions().position(latLng).icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED))).setSnippet(place.getName());
+					// }
+					listView.setAdapter(places);
+					((WebView)findViewById(R.id.webview)).setVisibility(View.INVISIBLE);
+				}
+			});
+		} catch (ClientProtocolException e) {
+			e.printStackTrace();
+		} catch (JSONException e) {
+			e.printStackTrace();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
 	}
 
 	@Override
@@ -76,11 +151,6 @@ public class MainActivity extends FragmentActivity implements SensorEventListene
 		// Inflate the menu; this adds items to the action bar if it is present.
 		getMenuInflater().inflate(R.menu.main, menu);
 		return true;
-	}
-
-	@Override
-	public void onAccuracyChanged(Sensor sensor, int accuracy) {
-
 	}
 
 	/*
@@ -91,7 +161,7 @@ public class MainActivity extends FragmentActivity implements SensorEventListene
 	@Override
 	protected void onPause() {
 		super.onPause();
-		mSensorManager.unregisterListener(this);
+
 		mLocationManager.removeUpdates(this);
 	}
 
@@ -103,75 +173,26 @@ public class MainActivity extends FragmentActivity implements SensorEventListene
 	@Override
 	protected void onResume() {
 		super.onResume();
-		// mSensorManager.registerListener(this, mMagneticSensor,
-		// SensorManager.SENSOR_DELAY_UI);
-		// mSensorManager.registerListener(this,
-		// mAccelSensor,SensorManager.SENSOR_DELAY_UI);
-		// lastTimeStamp = System.currentTimeMillis();
-		new Thread(new Runnable() {
-
-			@Override
-			public void run() {
-				gPlaces = new GooglePlaces("AIzaSyC1kNWXkXU4N68Cd05eUlGomKamHZ4he6A");
-				try {
-					PlacesResult result = gPlaces.getPlaces("coffee", 200, 40.288414, -74.548978);
-					final List<Place> places = result.getPlaces();
-					runOnUiThread(new Runnable() {
-						
-						@Override
-						public void run() {
-							for (Place place : places) {
-								Log.d(getClass().getName(), place.getName());
-								LatLng latLng = new LatLng(place.getLatitude(), place.getLongitude());
-								GoogleMap mMap = ((SupportMapFragment) getSupportFragmentManager().findFragmentById(R.id.map)).getMap();
-								CameraPosition position = CameraPosition.fromLatLngZoom(latLng, 15);
-								mMap.animateCamera(CameraUpdateFactory.newCameraPosition(position));
-								mMap.addMarker(new MarkerOptions().position(latLng).icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED))).setSnippet(place.getName());
-							}
-						}
-					});
-				} catch (ClientProtocolException e) {
-					e.printStackTrace();
-				} catch (JSONException e) {
-					e.printStackTrace();
-				} catch (IOException e) {
-					e.printStackTrace();
-				}
-			}
-		}).start();
-	}
-
-	@Override
-	public void onSensorChanged(SensorEvent event) {
-		if (event.sensor == mAccelSensor) {
-			latestAccelValues = event.values.clone();
-		} else if (event.sensor == mMagneticSensor) {
-			latestMagValues = event.values.clone();
-		}
-		if (latestMagValues != null && latestAccelValues != null) {
-			float[] rotationMatrix = new float[9];
-			float[] outR = new float[9];
-			float[] orientation = new float[3];
-			SensorManager.getRotationMatrix(rotationMatrix, null, latestAccelValues, latestMagValues);
-			SensorManager.remapCoordinateSystem(rotationMatrix, SensorManager.AXIS_X, SensorManager.AXIS_Z, outR);
-			SensorManager.getOrientation(outR, orientation);
-			if (System.currentTimeMillis() - lastTimeStamp > 150) {
-				// Log.d(getClass().getName(),"Rotation around z = "+String.valueOf(Math.toDegrees(orientation[0]))+"\tRotation around y = "+String.valueOf(Math.toDegrees(orientation[1])+"\tRotation around x = "+String.valueOf(Math.toDegrees(orientation[2]))));
-				lastTimeStamp = System.currentTimeMillis();
-				directionCanvas.setAngle((int) (-1 * Math.toDegrees(orientation[0])));
-			}
-		}
-
+		mLocationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 10000, 10, this);
 	}
 
 	@Override
 	public void onLocationChanged(Location location) {
 		Log.d(getClass().getName(), "Lat = " + String.valueOf(location.getLatitude()) + " Long = " + String.valueOf(location.getLongitude()));
-		LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
-		GoogleMap mMap = ((SupportMapFragment) getSupportFragmentManager().findFragmentById(R.id.map)).getMap();
-		CameraPosition position = CameraPosition.fromLatLngZoom(latLng, 15);
-		mMap.animateCamera(CameraUpdateFactory.newCameraPosition(position));
-		mMap.addMarker(new MarkerOptions().position(latLng).icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE)));
+		if (location.hasAccuracy() && location.getAccuracy() < LOCATION_ACCURACY_IN_METERS) {
+			places.setLastKnownLocation(location);
+			ListView listView = (ListView) findViewById(R.id.list_view);
+			listView.invalidate();
+		}
+		Log.d(getClass().getName(), "Location accuracy is " + location.getAccuracy());
+		// LatLng latLng = new LatLng(location.getLatitude(),
+		// location.getLongitude());
+		// GoogleMap mMap = ((SupportMapFragment)
+		// getSupportFragmentManager().findFragmentById(R.id.map)).getMap();
+		// CameraPosition position = CameraPosition.fromLatLngZoom(latLng, 15);
+		// mMap.animateCamera(CameraUpdateFactory.newCameraPosition(position));
+		// mMap.addMarker(new
+		// MarkerOptions().position(latLng).icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE)));
 
 	}
 
